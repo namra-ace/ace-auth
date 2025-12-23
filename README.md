@@ -1,36 +1,36 @@
-# 🛡️ ZenAuth
+# 🛡️ AceAuth
 
 > **Stateful Security, Stateless Speed.**  
 > An enterprise-grade identity management library featuring "Graceful Token Rotation," Device Fingerprinting, and Sliding Window sessions.
 
-[![NPM Version](https://img.shields.io/npm/v/@namra_ace/zen-auth?style=flat-square)](https://www.npmjs.com/package/@namra_ace/zen-auth)
+[![NPM Version](https://img.shields.io/npm/v/ace-auth?style=flat-square)](https://www.npmjs.com/package/ace-auth)
 ![TypeScript](https://img.shields.io/badge/Language-TypeScript-blue?style=flat-square)
 ![Tests](https://img.shields.io/badge/Tests-100%25_Passing-green?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-purple?style=flat-square)
 
 ---
 
-## 💡 Why ZenAuth?
+## 💡 Why AceAuth?
 
 In modern web development, you typically have to choose between **Security** (short-lived JWTs) and **User Experience** (long-lived sessions).  
 
-**ZenAuth gives you both.** It uses a **Hybrid Architecture** to maintain security without forcing users to log in repeatedly.
+**AceAuth gives you both.** It uses a **Hybrid Architecture** to maintain security without forcing users to log in repeatedly.
 
-| Feature         | Standard JWT                | ZenAuth                     |
-|------------------|-----------------------------|-----------------------------|
-| **Revocation**   | ❌ Impossible until expiry  | ✅ **Instant** (DB Backed)  |
-| **Performance**  | ✅ High (Stateless)         | ✅ **High** (Redis Caching) |
-| **UX**           | ❌ Hard Logout on expiry    | ✅ **Graceful Auto-Rotation** |
-| **Device Mgmt**  | ❌ None                     | ✅ **Active Sessions View** |
+| Feature         | Standard JWT                  | AceAuth                     |
+|------------------|-------------------------------|-----------------------------|
+| **Revocation**   | ❌ Impossible until expiry    | ✅ **Instant** (DB Backed)  |
+| **Performance**  | ✅ High (Stateless)           | ✅ **High** (Redis Caching) |
+| **UX**           | ❌ Hard Logout on expiry      | ✅ **Graceful Auto-Rotation** |
+| **Device Mgmt**  | ❌ None                       | ✅ **Active Sessions View** |
 
 ---
 
 ## 📦 Installation
 
-Install ZenAuth via npm:
+Install AceAuth via npm:
 
 ```bash
-npm install @namra_ace/zen-auth
+npm install ace-auth
 ```
 
 ---
@@ -39,10 +39,10 @@ npm install @namra_ace/zen-auth
 
 ### 1. Initialize
 
-ZenAuth is database-agnostic. Below is a standard production setup using Redis:
+AceAuth is database-agnostic. Below is a standard production setup using Redis:
 
 ```typescript
-import { ZenAuth, RedisStore } from '@namra_ace/zen-auth';
+import { AceAuth, RedisStore } from 'ace-auth';
 import { createClient } from 'redis';
 
 // 1. Connect to Redis
@@ -50,7 +50,7 @@ const redis = createClient();
 await redis.connect();
 
 // 2. Initialize Auth Engine
-const auth = new ZenAuth({
+const auth = new AceAuth({
     secret: process.env.JWT_SECRET || 'super-secret',
     store: new RedisStore(redis),
     sessionDuration: 30 * 24 * 60 * 60, // 30 Days (Sliding Window)
@@ -62,11 +62,9 @@ const auth = new ZenAuth({
 });
 ```
 
----
-
 ### 2. Login (Capture Device Info)
 
-Pass the request object (`req`) so ZenAuth can fingerprint the device (IP/User-Agent).
+Pass the request object (`req`) so AceAuth can fingerprint the device (IP/User-Agent).
 
 ```typescript
 import express from 'express';
@@ -83,17 +81,15 @@ app.post('/api/login', async (req, res) => {
 });
 ```
 
----
-
 ### 3. Protect Routes (Middleware)
 
-Use the included `gatekeeper` middleware to secure endpoints. It automatically handles Graceful Expiration.
+Use the included gatekeeper middleware to secure endpoints. It automatically handles Graceful Expiration.
 
 ```typescript
-import { gatekeeper } from '@namra_ace/zen-auth/middleware';
+import { gatekeeper } from 'ace-auth/middleware';
 
 app.get('/api/profile', gatekeeper(auth), (req, res) => {
-    // If token was rotated, the new one is in res.headers['x-zen-token']
+    // If token was rotated, the new one is in res.headers['x-ace-token']
     res.json({ message: `Hello User ${req.user.id}` });
 });
 ```
@@ -102,14 +98,14 @@ app.get('/api/profile', gatekeeper(auth), (req, res) => {
 
 ## 🔌 Database Adapters
 
-ZenAuth works with any database. Import the specific adapter you need.
+AceAuth works with any database. Import the specific adapter you need.
 
 ### Redis (Recommended for Speed)
 
 Uses Secondary Indexing (Sets) to map Users ↔ Sessions for O(1) lookups.
 
 ```typescript
-import { RedisStore } from '@namra_ace/zen-auth/adapters';
+import { RedisStore } from 'ace-auth/adapters';
 // Requires 'redis' package installed
 const store = new RedisStore(redisClient);
 ```
@@ -119,7 +115,7 @@ const store = new RedisStore(redisClient);
 Requires a table with columns: `sid` (text), `sess` (json), `expired_at` (timestamp).
 
 ```typescript
-import { PostgresStore } from '@namra_ace/zen-auth/adapters';
+import { PostgresStore } from 'ace-auth/adapters';
 // Requires 'pg' pool
 const store = new PostgresStore(pool, 'auth_sessions_table');
 ```
@@ -129,7 +125,7 @@ const store = new PostgresStore(pool, 'auth_sessions_table');
 Stores sessions as documents. Good for no-setup environments.
 
 ```typescript
-import { MongoStore } from '@namra_ace/zen-auth/adapters';
+import { MongoStore } from 'ace-auth/adapters';
 // Requires 'mongoose' connection
 const store = new MongoStore(mongoose.connection.collection('sessions'));
 ```
@@ -145,7 +141,6 @@ Allow users to see all their logged-in devices and remotely log them out (like N
 ```typescript
 // GET /api/devices
 app.get('/api/devices', gatekeeper(auth), async (req, res) => {
-    // Returns: [{ device: { ip: '...', userAgent: 'Chrome' }, loginAt: '...' }]
     const sessions = await auth.getActiveSessions(req.user.id);
     res.json(sessions);
 });
@@ -156,8 +151,6 @@ app.post('/api/devices/logout-all', gatekeeper(auth), async (req, res) => {
     res.json({ success: true, message: "Logged out of all other devices" });
 });
 ```
-
----
 
 ### 📧 Passwordless Login (OTP)
 
@@ -187,12 +180,12 @@ app.post('/auth/verify-code', async (req, res) => {
 
 ## 🏗️ Architecture: "Graceful Expiration"
 
-This is the core problem ZenAuth solves.
+This is the core problem AceAuth solves.
 
 **Scenario:** User leaves a tab open for 20 minutes. The 15-minute JWT expires.  
 
 - **Standard Library:** Request fails (401). User is forced to log in again. 😡  
-- **ZenAuth:** Middleware catches the expiry error, checks the database, and issues a new token if the session is still valid.
+- **AceAuth:** Middleware catches the expiry error, checks the database, and issues a new token if the session is still valid.
 
 ```mermaid
 sequenceDiagram
@@ -218,8 +211,12 @@ sequenceDiagram
 
 This library is 100% covered by tests using Vitest.
 
-- ✅ **Replay Protection:** OTPs are deleted immediately after use.
-- ✅ **Tamper Proofing:** Tokens signed with invalid secrets are rejected immediately.
+- ✅ **Replay Protection:** OTPs are deleted immediately after use.  
+- ✅ **Tamper Proofing:** Tokens signed with invalid secrets are rejected immediately.  
 - ✅ **Lazy Cleanup:** Expired sessions are automatically cleaned up from the user index during read operations to prevent memory leaks.
 
 ---
+
+## 📄 License
+
+MIT

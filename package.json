@@ -1,6 +1,6 @@
 {
-  "name": "@namra_ace/zen-auth",
-  "version": "1.0.2",
+  "name": "ace-auth",
+  "version": "1.0.0",
   "description": "Enterprise-grade identity management with graceful token rotation",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
