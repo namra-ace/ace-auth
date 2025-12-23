@@ -1,6 +1,6 @@
 # 🛡️ ZenAuth
 
-> **Stateful Security, Stateless Speed.**
+> **Stateful Security, Stateless Speed.**  
 > An enterprise-grade identity management library featuring "Graceful Token Rotation," Device Fingerprinting, and Sliding Window sessions.
 
 ![TypeScript](https://img.shields.io/badge/Language-TypeScript-blue)
@@ -8,34 +8,37 @@
 ![License](https://img.shields.io/badge/License-MIT-purple)
 ![Size](https://img.shields.io/badge/Size-Lightweight-orange)
 
+---
+
 ## 💡 Why ZenAuth?
 
-In modern web development, you typically have to choose between **Security** (short-lived JWTs) and **User Experience** (long-lived sessions).
+In modern web development, you typically have to choose between **Security** (short-lived JWTs) and **User Experience** (long-lived sessions).  
 
 **ZenAuth gives you both.** It uses a **Hybrid Architecture** to maintain security without forcing users to log in repeatedly.
 
-| Feature | Standard JWT | ZenAuth |
-| :--- | :---: | :---: |
-| **Revocation** | ❌ Impossible until expiry | ✅ Instant (DB Backed) |
-| **Performance** | ✅ High (Stateless) | ✅ High (Redis Caching) |
-| **UX** | ❌ Hard Logout on expiry | ✅ Graceful Auto-Rotation |
-| **Device Mgmt** | ❌ None | ✅ Active Sessions View |
+| Feature         | Standard JWT               | ZenAuth                     |
+|------------------|----------------------------|-----------------------------|
+| **Revocation**   | ❌ Impossible until expiry | ✅ Instant (DB Backed)      |
+| **Performance**  | ✅ High (Stateless)        | ✅ High (Redis Caching)     |
+| **UX**           | ❌ Hard Logout on expiry   | ✅ Graceful Auto-Rotation   |
+| **Device Mgmt**  | ❌ None                    | ✅ Active Sessions View     |
 
 ---
 
 ## 🌟 Key Features
 
-* **🛡️ Dual-Layer Verification:** Combines 1-minute ephemeral JWTs with 30-day database sessions.
-* **🔄 Graceful Expiration:** Solves the "Idle Logout" problem. If a token dies but the user is active, the system transparently issues a fresh one.
-* **📱 Device Fingerprinting:** Automatically captures IP, User-Agent, and Login Time for security auditing.
-* **🕵️ Active Sessions Dashboard:** allow users to see *"Logged in on Chrome (Windows)"* and remotely revoke specific devices.
-* **🔌 Database Agnostic:** Native adapters for **Redis**, **MongoDB**, **PostgreSQL**, and Memory.
+- **🛡️ Dual-Layer Verification:** Combines 1-minute ephemeral JWTs with 30-day database sessions.
+- **🔄 Graceful Expiration:** Solves the "Idle Logout" problem. If a token expires but the user is active, the system transparently issues a fresh one.
+- **📱 Device Fingerprinting:** Automatically captures IP, User-Agent, and Login Time for security auditing.
+- **🕵️ Active Sessions Dashboard:** Allows users to see *"Logged in on Chrome (Windows)"* and remotely revoke specific devices.
+- **🔌 Database Agnostic:** Native adapters for **Redis**, **MongoDB**, **PostgreSQL**, and Memory.
 
 ---
 
 ## 🏗️ System Architecture
 
 ### 1. The "Graceful Expiration" Flow
+
 Instead of rejecting an expired token immediately, ZenAuth checks the database to see if the user's *session* is still valid. If it is, the request is allowed, and a new token is sent back automatically.
 
 ```mermaid
@@ -54,16 +57,34 @@ sequenceDiagram
     Database-->>Middleware: Session Active (30 Days left)
     
     Middleware->>Client: 200 OK + New Token (Header)
-2. Secondary Indexing (Redis)To support getActiveSessions() efficiently without scanning the entire database (which is O(N) and slow), ZenAuth maintains a Secondary Index using Redis Sets.Key 1 (Data): session:123 $\rightarrow$ { user: 'A', ip: '...' }Key 2 (Index): idx:user:A $\rightarrow$ [ 'session:123', 'session:456' ]This ensures O(1) lookup performance even with millions of users
+```
 
-Installation
-``bash
+### 2. Secondary Indexing (Redis)
+
+To support `getActiveSessions()` efficiently without scanning the entire database (which is O(N) and slow), ZenAuth maintains a Secondary Index using Redis Sets.
+
+- **Key 1 (Data):** `session:123 → { user: 'A', ip: '...' }`
+- **Key 2 (Index):** `idx:user:A → [ 'session:123', 'session:456' ]`
+
+This ensures O(1) lookup performance even with millions of users.
+
+---
+
+## 🚀 Installation
+
+```bash
 npm install zen-auth
+```
 
-🚀 Quick Start
-1. Initialize
+---
+
+## 🏃 Quick Start
+
+### 1. Initialize
+
 ZenAuth works with your existing database. Here is a Redis example:
-TypeScript
+
+```typescript
 import { ZenAuth, RedisStore } from 'zen-auth';
 import { createClient } from 'redis';
 
@@ -76,7 +97,14 @@ const auth = new ZenAuth({
   sessionDuration: 30 * 24 * 60 * 60, // 30 Days
   tokenDuration: '1m' // Rotate every minute
 });
-2. Login & Capture Device InfoPass the request object (req) so ZenAuth can fingerprint the device.TypeScriptapp.post('/login', async (req, res) => {
+```
+
+### 2. Login & Capture Device Info
+
+Pass the request object (`req`) so ZenAuth can fingerprint the device.
+
+```typescript
+app.post('/login', async (req, res) => {
   // 1. Verify credentials (your logic)
   const user = await checkPassword(req.body.email, req.body.password);
   
@@ -85,7 +113,14 @@ const auth = new ZenAuth({
   
   res.json({ token });
 });
-3. Build the "Security Dashboard"This feature is what makes ZenAuth stand out. Allow users to manage their own security.TypeScriptimport { gatekeeper } from 'zen-auth/middleware';
+```
+
+### 3. Build the "Security Dashboard"
+
+This feature is what makes ZenAuth stand out. Allow users to manage their own security.
+
+```typescript
+import { gatekeeper } from 'zen-auth/middleware';
 
 // GET /sessions -> Returns active devices
 app.get('/sessions', gatekeeper(auth), async (req, res) => {
@@ -106,7 +141,33 @@ app.post('/logout-all', gatekeeper(auth), async (req, res) => {
   await auth.logoutAll(req.user.id);
   res.send('Logged out of all devices.');
 });
+```
 
-🧪 TestingThis library is built with Test Driven Development (TDD) using Vitest.Bash# Run the full test suite
+---
+
+## 🧪 Testing
+
+This library is built with Test Driven Development (TDD) using Vitest.
+
+```bash
+# Run the full test suite
 npm run test
-Coverage Includes:✅ Token Tampering (Invalid Signature)✅ Replay Attacks (OTP Verification)✅ Idle Timeouts vs Active Usage✅ Device Metadata Storage🔌 Adapters SupportedAdapterUse CaseMemoryStoreLocal Development / TestingRedisStoreProduction (Recommended) - FastestMongoStoreDocument-based persistencePostgresStoreSQL-based persistence
+```
+
+### Coverage Includes:
+
+- ✅ Token Tampering (Invalid Signature)
+- ✅ Replay Attacks (OTP Verification)
+- ✅ Idle Timeouts vs Active Usage
+- ✅ Device Metadata Storage
+
+---
+
+## 🔌 Adapters Supported
+
+| Adapter       | Use Case                       |
+|---------------|--------------------------------|
+| **MemoryStore** | Local Development / Testing   |
+| **RedisStore**  | Production (Recommended) - Fastest |
+| **MongoStore**  | Document-based persistence    |
+| **PostgresStore** | SQL-based persistence       |
