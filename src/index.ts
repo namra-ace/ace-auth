@@ -1,7 +1,7 @@
 // src/index.ts
 
 // Export Core
-export { ZenAuth } from './core/ZenAuth';
+export { AceAuth } from './core/AceAuth';
 
 // Export Interfaces
 export { IStore } from './interfaces/IStore';

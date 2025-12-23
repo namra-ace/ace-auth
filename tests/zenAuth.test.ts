@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import jwt from 'jsonwebtoken';
-import { ZenAuth } from '../src/core/ZenAuth';
+import { AceAuth } from '../src/core/AceAuth';
 import { MemoryStore } from '../src/adapters/MemoryStore';
 
 // Mock Nodemailer
@@ -14,14 +14,14 @@ vi.mock('nodemailer', () => ({
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-describe('ZenAuth System', () => {
-  let auth: ZenAuth;
+describe('AceAuth System', () => {
+  let auth: AceAuth;
   let store: MemoryStore;
   const SECRET = 'test-secret-key';
 
   beforeEach(() => {
     store = new MemoryStore();
-    auth = new ZenAuth({
+    auth = new AceAuth({
       secret: SECRET,
       store: store,
       sessionDuration: 30, // 30 seconds
@@ -173,7 +173,7 @@ describe('ZenAuth System', () => {
 
   it('should filter out expired sessions automatically (Lazy Cleanup)', async () => {
     // 1. Create a session that expires very fast (using a custom Auth instance for this test)
-    const fastAuth = new ZenAuth({
+    const fastAuth = new AceAuth({
       secret: SECRET,
       store: store, // Share the store
       sessionDuration: 1, // 1 second session duration!
