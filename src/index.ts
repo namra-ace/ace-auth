@@ -11,3 +11,5 @@ export { MemoryStore } from './adapters/MemoryStore';
 export { MongoStore } from './adapters/MongoStore';
 export { RedisStore } from './adapters/RedisStore';
 export { PostgresStore } from './adapters/PostgressStore';
+
+export { gatekeeper } from './middleware/gatekeeper';
