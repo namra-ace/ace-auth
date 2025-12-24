@@ -3,7 +3,8 @@ import { IStore } from "../interfaces/IStore";
 // Minimal MongoDB collection interface
 interface MongoModel {
   findOne(query: any): Promise<any>;
-  find(query: any): Promise<any[]>;
+  // Changed return type to 'any' to support both Mongoose Queries and Native Cursors
+  find(query: any): any; 
   updateOne(query: any, update: any, options?: any): Promise<any>;
   deleteOne(query: any): Promise<any>;
   deleteMany(query: any): Promise<any>;
@@ -22,7 +23,14 @@ export class MongoStore implements IStore {
 
   async set(key: string, value: string, ttlSeconds: number): Promise<void> {
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
-    const parsed = JSON.parse(value);
+    
+    // Parse the value to extract the userId safely
+    let parsed: any = {};
+    try {
+        parsed = JSON.parse(value);
+    } catch (e) {
+        // If value isn't JSON, we just won't have the userId
+    }
 
     await this.model.updateOne(
       { _id: key },
@@ -70,8 +78,19 @@ export class MongoStore implements IStore {
   // ==============================
 
   async findAllByUser(userId: string): Promise<string[]> {
-    const docs = await this.model.find({ userId });
-    return docs.map(doc => doc.data);
+    const result = this.model.find({ userId });
+
+    // FIX: Check if we got a Native MongoDB Cursor (which has .toArray)
+    // or a Mongoose Query/Promise (which we can await directly)
+    const docs = typeof result.toArray === 'function' 
+      ? await result.toArray() 
+      : await result;
+
+    if (!Array.isArray(docs)) {
+      return [];
+    }
+
+    return docs.map((doc: any) => doc.data);
   }
 
   async deleteByUser(userId: string): Promise<void> {
