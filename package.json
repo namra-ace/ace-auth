@@ -1,6 +1,6 @@
 {
   "name": "ace-auth",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Enterprise-grade identity management with graceful token rotation",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
