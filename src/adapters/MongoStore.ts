@@ -1,36 +1,39 @@
 import { IStore } from "../interfaces/IStore";
 
-// We define a shape for what the Mongo Model looks like
-// so TypeScript doesn't complain
+// Minimal MongoDB collection interface
 interface MongoModel {
-  findOne(query: any): any;
-  updateOne(query: any, update: any, options?: any): any;
-  deleteOne(query: any): any;
+  findOne(query: any): Promise<any>;
+  find(query: any): Promise<any[]>;
+  updateOne(query: any, update: any, options?: any): Promise<any>;
+  deleteOne(query: any): Promise<any>;
+  deleteMany(query: any): Promise<any>;
 }
 
 export class MongoStore implements IStore {
   private model: MongoModel;
 
-  constructor(mongooseModel: any) {
-    this.model = mongooseModel;
+  constructor(mongooseCollection: any) {
+    this.model = mongooseCollection;
   }
-    async findAllByUser(userId: string): Promise<string[]> {
-        const docs = await this.model.findOne({ userId });
-        if (!docs) return [];
-        return docs.map((doc: any) => doc.data);
-    }
 
-    async deleteByUser(userId: string): Promise<void> {
-        await this.model.deleteOne({ userId });
-    }
+  // ==============================
+  // REQUIRED BY AceAuth
+  // ==============================
 
   async set(key: string, value: string, ttlSeconds: number): Promise<void> {
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
-    
-    // Upsert: Update if exists, Insert if new
+    const parsed = JSON.parse(value);
+
     await this.model.updateOne(
       { _id: key },
-      { _id: key, data: value, expiresAt },
+      {
+        $set: {
+          _id: key,
+          data: value,
+          userId: parsed.id, // 🔥 REQUIRED for logoutAll / devices
+          expiresAt
+        }
+      },
       { upsert: true }
     );
   }
@@ -40,24 +43,38 @@ export class MongoStore implements IStore {
 
     if (!doc) return null;
 
-    // MongoDB TTL indexes usually handle cleanup, but we double-check here
     if (new Date() > doc.expiresAt) {
+      // Clean up expired session eagerly
+      await this.delete(key);
       return null;
     }
 
     return doc.data;
   }
 
-  async delete(key: string): Promise<void> {
-    await this.model.deleteOne({ _id: key });
-  }
-
   async touch(key: string, ttlSeconds: number): Promise<void> {
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
-    // The "Slide": Just update the date
+
     await this.model.updateOne(
       { _id: key },
       { $set: { expiresAt } }
     );
+  }
+
+  async delete(key: string): Promise<void> {
+    await this.model.deleteOne({ _id: key });
+  }
+
+  // ==============================
+  // DEVICE / USER MANAGEMENT
+  // ==============================
+
+  async findAllByUser(userId: string): Promise<string[]> {
+    const docs = await this.model.find({ userId });
+    return docs.map(doc => doc.data);
+  }
+
+  async deleteByUser(userId: string): Promise<void> {
+    await this.model.deleteMany({ userId });
   }
 }

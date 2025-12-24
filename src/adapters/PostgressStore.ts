@@ -1,13 +1,17 @@
 import { IStore } from '../interfaces/IStore';
 
 /**
- * SQL SCHEMA REQUIREMENT:
- * * CREATE TABLE auth_sessions (
- * sid VARCHAR(255) PRIMARY KEY,
- * sess JSON NOT NULL,
- * expired_at TIMESTAMPTZ NOT NULL
+ * REQUIRED SQL SCHEMA:
+ *
+ * CREATE TABLE auth_sessions (
+ *   sid TEXT PRIMARY KEY,
+ *   sess JSONB NOT NULL,
+ *   user_id TEXT NOT NULL,
+ *   expired_at TIMESTAMPTZ NOT NULL
  * );
- * * CREATE INDEX idx_auth_sessions_expired_at ON auth_sessions(expired_at);
+ *
+ * CREATE INDEX idx_auth_sessions_user_id ON auth_sessions(user_id);
+ * CREATE INDEX idx_auth_sessions_expired_at ON auth_sessions(expired_at);
  */
 
 interface PgPool {
@@ -15,82 +19,108 @@ interface PgPool {
 }
 
 export class PostgresStore implements IStore {
-  // Allow user to customize table name
-  constructor(private pool: PgPool, private tableName: string = 'auth_sessions') {}
-    async findAllByUser(userId: string): Promise<string[]> {
-        const query = `
-            SELECT sess FROM ${this.tableName}
-            WHERE sess->>'userId' = $1 AND expired_at > NOW()
-        `;
+  private table: string;
 
-        const result = await this.pool.query(query, [userId]);
-
-        // Extract sessions and return them as an array of strings
-        return result.rows.map((row: any) => {
-            const data = row.sess;
-            return typeof data === 'string' ? data : JSON.stringify(data);
-        });
+  constructor(
+    private pool: PgPool,
+    tableName: string = 'auth_sessions'
+  ) {
+    // 🛡️ Prevent SQL injection via table name
+    if (!/^[a-zA-Z_]+$/.test(tableName)) {
+      throw new Error('Invalid table name');
     }
+    this.table = tableName;
+  }
 
-    async deleteByUser(userId: string): Promise<void> {
-        const query = `
-            DELETE FROM ${this.tableName}
-            WHERE sess->>'userId' = $1
-        `;
-
-        await this.pool.query(query, [userId]);
-    }
+  // ==============================
+  // CORE SESSION OPERATIONS
+  // ==============================
 
   async set(key: string, value: string, ttlSeconds: number): Promise<void> {
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
-    
-    // We use ON CONFLICT to handle "Upserts" (Update if exists, Insert if new)
+    const parsed = JSON.parse(value);
+
     const query = `
-      INSERT INTO ${this.tableName} (sid, sess, expired_at)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (sid) 
-      DO UPDATE SET sess = $2, expired_at = $3
+      INSERT INTO ${this.table} (sid, sess, user_id, expired_at)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (sid)
+      DO UPDATE SET
+        sess = EXCLUDED.sess,
+        user_id = EXCLUDED.user_id,
+        expired_at = EXCLUDED.expired_at
     `;
 
-    await this.pool.query(query, [key, value, expiresAt]);
+    await this.pool.query(query, [
+      key,
+      parsed,
+      parsed.id, // 🔥 REQUIRED for logoutAll & device management
+      expiresAt
+    ]);
   }
 
   async get(key: string): Promise<string | null> {
-    // We perform a "Lazy Delete" check here.
-    // Even if the row exists, if it's expired, we treat it as null.
     const query = `
-      SELECT sess FROM ${this.tableName} 
-      WHERE sid = $1 AND expired_at > NOW()
+      SELECT sess, expired_at
+      FROM ${this.table}
+      WHERE sid = $1
     `;
 
     const result = await this.pool.query(query, [key]);
-    
-    if (result.rows && result.rows.length > 0) {
-      // Postgres returns JSON columns as objects, but our interface expects a string
-      // so we might need to stringify it back, or just return the data depending on implementation.
-      // Since ZenAuth expects a stringified payload:
-      const data = result.rows[0].sess;
-      return typeof data === 'string' ? data : JSON.stringify(data);
+
+    if (!result.rows.length) return null;
+
+    const { sess, expired_at } = result.rows[0];
+
+    if (new Date() > expired_at) {
+      // Lazy cleanup
+      await this.delete(key);
+      return null;
     }
 
-    return null;
-  }
-
-  async delete(key: string): Promise<void> {
-    const query = `DELETE FROM ${this.tableName} WHERE sid = $1`;
-    await this.pool.query(query, [key]);
+    return JSON.stringify(sess);
   }
 
   async touch(key: string, ttlSeconds: number): Promise<void> {
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
-    
-    // Just update the timestamp to keep the session alive
+
     const query = `
-      UPDATE ${this.tableName} 
-      SET expired_at = $1 
+      UPDATE ${this.table}
+      SET expired_at = $1
       WHERE sid = $2
     `;
 
     await this.pool.query(query, [expiresAt, key]);
+  }
+
+  async delete(key: string): Promise<void> {
+    await this.pool.query(
+      `DELETE FROM ${this.table} WHERE sid = $1`,
+      [key]
+    );
+  }
+
+  // ==============================
+  // USER / DEVICE MANAGEMENT
+  // ==============================
+
+  async findAllByUser(userId: string): Promise<string[]> {
+    const query = `
+      SELECT sess
+      FROM ${this.table}
+      WHERE user_id = $1 AND expired_at > NOW()
+    `;
+
+    const result = await this.pool.query(query, [userId]);
+
+    return result.rows.map((row: any) =>
+      JSON.stringify(row.sess)
+    );
+  }
+
+  async deleteByUser(userId: string): Promise<void> {
+    await this.pool.query(
+      `DELETE FROM ${this.table} WHERE user_id = $1`,
+      [userId]
+    );
   }
 }
